@@ -163,6 +163,12 @@ public class ReceiveMessageLoopThread extends Thread {
         this.host = host;
     }
 
-
+    /**
+     * 返回serverSocket，使外部在onDestroy方法中关闭
+     * @return
+     */
+    public ServerSocket getServerSocket() {
+        return serverSocket;
+    }
 }
 

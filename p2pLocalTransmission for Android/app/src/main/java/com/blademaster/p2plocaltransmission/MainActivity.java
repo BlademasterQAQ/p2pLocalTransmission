@@ -9,6 +9,7 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
@@ -22,6 +23,10 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.SocketAddress;
+import java.util.ArrayList;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -84,33 +89,35 @@ public class MainActivity extends AppCompatActivity {
         send_button.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                SendMessageThread sendMessageThread=new SendMessageThread(host, message_POST);
-                sendMessageThread.setMessage("请求发送文件");
-                sendMessageThread.start();
+                if (fileUri != null) {
+                    SendMessageThread sendMessageThread = new SendMessageThread(host, message_POST);
+                    sendMessageThread.setMessage("请求发送文件");
+                    sendMessageThread.start();
 
-                //开启发送文件线程
-                final SendFileByInputStream sendFileByInputStream=new SendFileByInputStream(host,file_POST,handler_MainActivity);
-                InputStream fileInputStream = null;
-                try {
-                    fileInputStream = getContentResolver().openInputStream(fileUri);//由Uri获取文件流
-                } catch (FileNotFoundException e) {
-                    e.printStackTrace();
-                }
-                sendFileByInputStream.setFileInputStream(fileInputStream);
-                sendFileByInputStream.setFileName(editText.getText().toString());
-                //String path=MainActivity.this.getApplicationContext().getFilesDir().toString()+"/basedata.txt";
-                //sendFileThread.setFilePath(filePath);
-                sendFileByInputStream.start();
-
-                new Thread(new Runnable() {//当文件正在发送时
-                    @Override
-                    public void run() {
-                        while (sendFileByInputStream.getCurrentLocal()==0||sendFileByInputStream.getFile_length()>sendFileByInputStream.getCurrentLocal()){
-                            textView_process.setText("正在发送："+sendFileByInputStream.getCurrentLocal()+"/"+sendFileByInputStream.getFile_length());
-                        }
-                        textView_process.setText("");
+                    //开启发送文件线程
+                    final SendFileByInputStream sendFileByInputStream = new SendFileByInputStream(host, file_POST, handler_MainActivity);
+                    InputStream fileInputStream = null;
+                    try {
+                        fileInputStream = getContentResolver().openInputStream(fileUri);//由Uri获取文件流
+                    } catch (FileNotFoundException e) {
+                        e.printStackTrace();
                     }
-                }).start();
+                    sendFileByInputStream.setFileInputStream(fileInputStream);
+                    sendFileByInputStream.setFileName(editText.getText().toString());
+                    //String path=MainActivity.this.getApplicationContext().getFilesDir().toString()+"/basedata.txt";
+                    //sendFileThread.setFilePath(filePath);
+                    sendFileByInputStream.start();
+
+                    new Thread(new Runnable() {//当文件正在发送时
+                        @Override
+                        public void run() {
+                            while (sendFileByInputStream.getCurrentLocal() == 0 || sendFileByInputStream.getFile_length() > sendFileByInputStream.getCurrentLocal()) {
+                                textView_process.setText("正在发送：" + sendFileByInputStream.getCurrentLocal() + "/" + sendFileByInputStream.getFile_length());
+                            }
+                            textView_process.setText("");
+                        }
+                    }).start();
+                }
             }
         });
 
@@ -162,15 +169,17 @@ public class MainActivity extends AppCompatActivity {
  * **************************线 程 区****************************
  */
         //循环接收线程
-        receiveMessageThread=new ReceiveMessageLoopThread(message_POST,handler_MainActivity);
+        //由于此线程持续运行，当屏幕翻转等操作时将重新启动Activity（运行onCreate方法），此时需要判断是否为第一次启动Activity（第一次启动Activity时保存Activity状态的参数savedInstanceState为null），不然会多次对同一个端口建立socket，因此报错  （最好的方法应该是在onDestroy方法中先关闭端口，实测发现“屏幕翻转”和“后台运行时被分享调用”时都会调用onDestroy方法）
+        receiveMessageThread = new ReceiveMessageLoopThread(message_POST, handler_MainActivity);
         receiveMessageThread.start();
+
 
         //获取WiFi信息线程
         new Thread(new Runnable() {
             @Override
             public void run() {
+                MobileWiFiInfo mobileWiFiInfo = new MobileWiFiInfo();
                 while(true){
-                    MobileWiFiInfo mobileWiFiInfo=new MobileWiFiInfo();
                     mobileWiFiInfo.getMobileWiFiInfo(MainActivity.this);
                     //WiFi判断
                     if(mobileWiFiInfo.isWiFiOpened()){
@@ -213,9 +222,29 @@ public class MainActivity extends AppCompatActivity {
                             textView_MobileIP.setText("");
                         }
                     }
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
                 }
             }
         }).start();
+
+        //**********************接收分享区***************************
+        Intent intent = getIntent();//返回启动本activity的intent（目的、意图），可以根据目的做进一步操作
+        String intent_action = intent.getAction();//获取动作信息，即是传单个文件还是多个文件
+        String intent_type = intent.getType();//获取MIME type，即文件的类型
+
+        if (Intent.ACTION_SEND.equals(intent_action) && intent_type != null) {//intent为发送单个文件时
+            fileUri = intent.getParcelableExtra(Intent.EXTRA_STREAM);//获取单个Uri
+            textView_path.setText(fileUri.getPath());
+            editText.setText(uri2filename(MainActivity.this,fileUri));
+        }
+        else if (Intent.ACTION_SEND_MULTIPLE.equals(intent_action) && intent_type != null) {//intent为发送多个文件时
+            ArrayList<Uri> imageUris = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+
+        }
     }
 
     @Override
@@ -251,4 +280,13 @@ public class MainActivity extends AppCompatActivity {
         return path.substring(local+1);
     }
 
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        try {
+            receiveMessageThread.getServerSocket().close();//关闭被占用的端口
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 }
