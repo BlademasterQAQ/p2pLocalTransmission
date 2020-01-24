@@ -245,15 +245,15 @@ public class Main extends JFrame{
 							
 								textField_information.setText("开始接收文件");
 								// 等待接收
-								ReceiveFileThread receiveFileThread = new ReceiveFileThread(file_POST,
+								ReceiveFilesThread receiveFilesThread = new ReceiveFilesThread(file_POST,
 										synchronizeReceiveFile);
-								receiveFileThread.start();
+								receiveFilesThread.start();
 								
 								new Thread(new Runnable() {//当文件正在接受时
 		                            @Override
 		                            public void run() {
-		                                while (receiveFileThread.getCurrentLocal()==0||receiveFileThread.getFile_length()>receiveFileThread.getCurrentLocal()){
-		                                    textField_information.setText("正在接收："+receiveFileThread.getCurrentLocal()+"/"+receiveFileThread.getFile_length());
+		                                while (receiveFilesThread.getCurrentLocal()==0||receiveFilesThread.getFile_length()>receiveFilesThread.getCurrentLocal()){
+		                                    textField_information.setText("正在接收："+receiveFilesThread.getCurrentLocal()+"/"+receiveFilesThread.getFile_length());
 		                                }
 		                                textField_information.setText("");
 		                            }

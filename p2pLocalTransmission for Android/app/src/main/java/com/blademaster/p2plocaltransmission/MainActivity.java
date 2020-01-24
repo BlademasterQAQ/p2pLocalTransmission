@@ -9,30 +9,25 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
-import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
-import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.IOException;
 import java.io.InputStream;
-import java.net.InetSocketAddress;
-import java.net.ServerSocket;
-import java.net.SocketAddress;
 import java.util.ArrayList;
 
 public class MainActivity extends AppCompatActivity {
 
     private TextView textView_path;
     private String filePath;
-    private Uri fileUri;//文件Uri，由intend获取
+    private ArrayList<Uri> fileUri = new ArrayList<>(0);//文件Uri，由intend获取
     private EditText editText;
     private ReceiveMessageLoopThread receiveMessageThread;//接受线程
 
@@ -70,6 +65,9 @@ public class MainActivity extends AppCompatActivity {
         final TextView textView_WiFiIP=findViewById(R.id.textView_WiFiIP);
         final TextView textView_MobileIP=findViewById(R.id.textView_MobileIP);
         final TextView textView_process=findViewById(R.id.textView_process);
+        final TextView textView_realpath=findViewById(R.id.textView_realpath);
+        final Switch switch_time=findViewById(R.id.switch_time);
+        switch_time.setChecked(true);
 
         Button select_button = findViewById(R.id.select_button);
         textView_path=findViewById(R.id.textView_path);
@@ -81,6 +79,7 @@ public class MainActivity extends AppCompatActivity {
             public void onClick(View v) {
                 Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
                 intent.setType("*/*");//设置类型，我这里是任意类型，任意后缀的可以这样写。
+                intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true);//允许多选
                 intent.addCategory(Intent.CATEGORY_OPENABLE);
                 startActivityForResult(intent, FILE_SELECT_FLAG);
             }
@@ -95,24 +94,34 @@ public class MainActivity extends AppCompatActivity {
                     sendMessageThread.start();
 
                     //开启发送文件线程
-                    final SendFileByInputStream sendFileByInputStream = new SendFileByInputStream(host, file_POST, handler_MainActivity);
-                    InputStream fileInputStream = null;
+                    final SendFilesByInputStream sendFilesByInputStream = new SendFilesByInputStream(host, file_POST, handler_MainActivity);
+                    //解析文件输入流
+                    ArrayList<InputStream> fileInputStream = new ArrayList<>(0);
                     try {
-                        fileInputStream = getContentResolver().openInputStream(fileUri);//由Uri获取文件流
+                        for(int i=0;i<fileUri.size();i++){
+                            fileInputStream.add(getContentResolver().openInputStream(fileUri.get(i)));//由Uri获取文件流
+                        }
                     } catch (FileNotFoundException e) {
                         e.printStackTrace();
                     }
-                    sendFileByInputStream.setFileInputStream(fileInputStream);
-                    sendFileByInputStream.setFileName(editText.getText().toString());
+                    sendFilesByInputStream.setFilesInputStream(fileInputStream);//设置文件输入流
+                    //解析文件名
+                    ArrayList<String> filesName = new ArrayList<>(0);
+
+                    for(int i=0;i<fileUri.size();i++){
+                        filesName.add(Uri2File.Uri2Filename(MainActivity.this,fileUri.get(i)));
+                    }
+                    sendFilesByInputStream.setFilesName(filesName);//设置文件名
+                    // TODO: 2020/1/20 提供可修改文件名的功能（根据editText获取最终发送的文件名）
                     //String path=MainActivity.this.getApplicationContext().getFilesDir().toString()+"/basedata.txt";
                     //sendFileThread.setFilePath(filePath);
-                    sendFileByInputStream.start();
+                    sendFilesByInputStream.start();
 
                     new Thread(new Runnable() {//当文件正在发送时
                         @Override
                         public void run() {
-                            while (sendFileByInputStream.getCurrentLocal() == 0 || sendFileByInputStream.getFile_length() > sendFileByInputStream.getCurrentLocal()) {
-                                textView_process.setText("正在发送：" + sendFileByInputStream.getCurrentLocal() + "/" + sendFileByInputStream.getFile_length());
+                            while (sendFilesByInputStream.getCurrentLocal() == 0 || sendFilesByInputStream.getFiles_length() > sendFilesByInputStream.getCurrentLocal()) {
+                                textView_process.setText("正在发送：" + sendFilesByInputStream.getCurrentLocal() + "/" + sendFilesByInputStream.getFiles_length());
                             }
                             textView_process.setText("");
                         }
@@ -237,13 +246,14 @@ public class MainActivity extends AppCompatActivity {
         String intent_type = intent.getType();//获取MIME type，即文件的类型
 
         if (Intent.ACTION_SEND.equals(intent_action) && intent_type != null) {//intent为发送单个文件时
-            fileUri = intent.getParcelableExtra(Intent.EXTRA_STREAM);//获取单个Uri
-            textView_path.setText(fileUri.getPath());
-            editText.setText(uri2filename(MainActivity.this,fileUri));
+            fileUri.clear();
+            fileUri.add((Uri)intent.getParcelableExtra(Intent.EXTRA_STREAM));//获取单个Uri
+            textView_path.setText(fileUri.get(0).getPath());
+            editText.setText(Uri2File.Uri2Filename(MainActivity.this,fileUri.get(0)));
+
         }
         else if (Intent.ACTION_SEND_MULTIPLE.equals(intent_action) && intent_type != null) {//intent为发送多个文件时
-            ArrayList<Uri> imageUris = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
-
+            fileUri = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);//返回文件Uri组成的ArrayList
         }
     }
 
@@ -252,14 +262,14 @@ public class MainActivity extends AppCompatActivity {
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode == Activity.RESULT_OK) {
             if (requestCode == FILE_SELECT_FLAG) {
-                fileUri = data.getData();
+                fileUri.clear();
+                fileUri.add(data.getData());
                 //Toast.makeText(this, "文件路径："+uri.getPath().toString(), Toast.LENGTH_SHORT).show();
-                //filePath = FileUtils.getFilePathByUri(MainActivity.this,uri);
-                filePath = fileUri.toString();
+                //filePath = Uri2File.getFilePathByUri(MainActivity.this,uri);
                 //filePath = "/storage/emulated/0/"+uri.getLastPathSegment().substring(8);
                 //filePath = "/storage/emulated/0/Download/QQMail/Simulink基本模块介绍.pdf";
-                textView_path.setText(filePath);//显示文件路径
-                editText.setText(uri2filename(MainActivity.this,fileUri));
+                textView_path.setText(fileUri.get(0).toString());//显示文件路径
+                editText.setText(Uri2File.Uri2Filename(MainActivity.this,fileUri.get(0)));
 
                 /*try {
                     System.out.println(readTextFromUri(uri));
@@ -274,19 +284,10 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private String uri2filename(Context context,Uri uri) {//由uri获取文件名
-        String path=FileUtils.getFilePathByUri(context,uri);//先将uri转为路径（QQ浏览器的路径存在错误）
-        int local=path.lastIndexOf("/");
-        return path.substring(local+1);
-    }
-
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        try {
-            receiveMessageThread.getServerSocket().close();//关闭被占用的端口
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        receiveMessageThread.Stop();//关闭被占用的端口
+        //也可以先获取receiveMessageThread的serverSocket并关闭，之后通过receiveMessageThread.close()关闭线程来结束循环，效果一个样
     }
 }

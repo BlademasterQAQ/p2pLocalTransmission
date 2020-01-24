@@ -164,11 +164,16 @@ public class ReceiveMessageLoopThread extends Thread {
     }
 
     /**
-     * 返回serverSocket，使外部在onDestroy方法中关闭
+     * 停止线程并关闭端口（关闭serverSocket）
      * @return
      */
-    public ServerSocket getServerSocket() {
-        return serverSocket;
+    public void Stop(){
+        isclose = true;//结束进程循环
+        try {
+            serverSocket.close();//关闭端口
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 }
 

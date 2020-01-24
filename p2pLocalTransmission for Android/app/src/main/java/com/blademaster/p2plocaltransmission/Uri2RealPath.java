@@ -9,9 +9,12 @@ import android.os.Environment;
 import android.provider.DocumentsContract;
 import android.provider.MediaStore;
 
-public final class FileUtils {
+import java.io.File;
 
-    public static String getFilePathByUri(Context context, Uri uri) {
+public class Uri2RealPath {
+    private String information;
+
+    public String getFilePathByUri(Context context, Uri uri) {
         String path = null;
         // 以 file:// 开头的
         if (ContentResolver.SCHEME_FILE.equals(uri.getScheme())) {
@@ -34,25 +37,10 @@ public final class FileUtils {
         }
         // 4.4及之后的 是以 content:// 开头的，比如 content://com.android.providers.media.documents/document/image%3A235700
         if (ContentResolver.SCHEME_CONTENT.equals(uri.getScheme()) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-            //QQ浏览器文件
-            /*if(isQQBrowserUri(uri)){//文件来自QQ浏览器时
-                System.out.println("这是QQ浏览器");
-                String str=uri.getPath();
-                System.out.println(str);
-                path = Environment.getExternalStorageDirectory()+uri.getPath();
-                return path;
-            }
-
-            if(isWPSUri(uri)){//文件来自WPS时
-                System.out.println("文件来自WPS");
-                String str=uri.getPath();
-                System.out.println(str);
-                path = Environment.getExternalStorageDirectory()+uri.getPath();
-                return path;
-            }*/
 
             if(isSystemAlbums(uri)){//文件来自系统相册、音乐或系统文件管理器时
                 System.out.println("这是系统相册或系统文件管理器");
+                information = "这是系统相册或系统文件管理器";
                 String[] filePathColumns = {MediaStore.Images.Media.DATA};
                 Cursor c = context.getContentResolver().query(uri, filePathColumns, null, null, null);
                 c.moveToFirst();
@@ -65,34 +53,58 @@ public final class FileUtils {
                 if (isExternalStorageDocument(uri)) {//在内部储存和外部储存中出现
                     // ExternalStorageProvider
                     System.out.println("这是ExternalStorageDocument");
-                    System.out.println(uri.getPath());
+                    information ="这是ExternalStorageDocument";
                     final String docId = DocumentsContract.getDocumentId(uri);
+                    System.out.println(docId);
                     final String[] split = docId.split(":");
                     final String type = split[0];
                     if ("primary".equalsIgnoreCase(type)) {//内部储存？
                         path = Environment.getExternalStorageDirectory() + "/" + split[1];//(绝对路径)
                         return path;
                     }else{//外部储存？
-                        path = split[1];//(非绝对路径)
+                        path = "/mnt/ext_sdcard/"+split[1];//华为手机的外置SD卡的路径
                         return path;
                     }
                 }else if (isDownloadsDocument(uri)) {//“下载内容”中出现，uri格式为“/document/raw:/storage/emulated/0/Download/QQMail/Simulink基本模块介绍.pdf”
                     // DownloadsProvider
                     System.out.println("这是DownloadsDocument");
-                    //略有改版？按别人的代码打开下载下载内容会出现错误，直接用uri.getPath()即可
+                    information ="这是DownloadsDocument";
+                    //该方法虽然多赞，但是可能对新版Android有错，public_downloads无法找到，all_downloads又需要ACCESS_ALL_DOWNLOADS权限，而这个权限在新版Android是没有的
                     /*final String id = DocumentsContract.getDocumentId(uri);
                     final Uri contentUri = ContentUris.withAppendedId(Uri.parse("content://downloads/public_downloads"),
                             Long.valueOf(id));
                     path = getDataColumn(context, contentUri, null, null);*/
-                    System.out.println(uri.getPath());
-                    path=uri.getPath().split(":")[1];//取文件路径部分(绝对路径)
-                    return path;
+
+                    //解决方法修改自：https://www.ojit.com/article/3644294
+                    if(uri.getPath().indexOf("raw")==-1){//Uri形式为document/992时，此时必须通过getContentResolver().query查找文件
+                        String fileName = getDownloadsDocumentPath(context, uri);//尝试解析文件的名字
+                        System.out.println(fileName);
+                        if (fileName != null) {
+                            return Environment.getExternalStorageDirectory().toString() + "/Download/" + fileName;
+                        }
+                    }else{
+                        //其他形式时，得到的Uri中含有路径信息，只需除去冗余信息即可
+                        return uri.getPath().split("raw:")[1];
+//                        String id = DocumentsContract.getDocumentId(uri);
+//                        System.out.println(id);
+//                        if (id.startsWith("raw:")) {
+//                            id = id.replaceFirst("raw:", "");
+//                            System.out.println(id);
+//                            File file = new File(id);
+//                            if (file.exists())
+//                                return id;
+//                        }
+                    }
+                    //final Uri contentUri = ContentUris.withAppendedId(Uri.parse("content://downloads/public_downloads"), Long.valueOf(id));
+                    //return getDataColumn(context, contentUri, null, null);
 
                 } else if (isMediaDocument(uri)) {//在“图片”、“视频”、“音频”中出现，以id的形式存在，需要用getContentResolver().query方法查找（待学习）
                     // MediaProvider
                     System.out.println("这是MediaDocument");
+                    information ="这是MediaDocument";
                     System.out.println(uri.getPath());
                     final String docId = DocumentsContract.getDocumentId(uri);//docId为“image:1329692”的形式
+                    System.out.println(docId);
                     final String[] split = docId.split(":");
                     final String type = split[0];//“image”
                     Uri contentUri = null;
@@ -111,18 +123,61 @@ public final class FileUtils {
             }
             //来自第三方软件的文件
             System.out.println("这是第三方软件"+uri.getAuthority());
-            String str=uri.getPath();
-            System.out.println(str);
-            path = uri.getPath();
-            return path;//这不是绝对路径
+            information ="这是第三方软件";
+            if(isQQBrowserUri(uri)) {
+                String str = uri.getPath().substring(10);//删除"/QQBrowser前缀"
+                path = Environment.getExternalStorageDirectory() + str;//内部储存
+                File file = new File(path);
+                if(!file.exists()){//文件不存在，可能为外部储存
+                    int local=-1;
+                    for(int i=0;i<4;i++){//从头开始查找第四个"/"的位置
+                        local = uri.getPath().indexOf("/",local+1);
+                        System.out.println(local);
+                    }
+                    path = "/mnt/ext_sdcard/" + uri.getPath().substring(local+1);
+                }
+                return path;
+            }
+            if(isWPSUri(uri)){
+                String str = uri.getPath().substring(9);//删除"/external前缀"
+                path = Environment.getExternalStorageDirectory() + str;
+                File file = new File(path);
+                if(!file.exists()){//文件不存在，可能为外部储存
+                    path = "/mnt/ext_sdcard" + str;
+                }
+                return path;
+            }
         }
         return null;
     }
 
-    private static String getDataColumn(Context context, Uri uri, String selection, String[] selectionArgs) {
+    public static String getDownloadsDocumentPath(Context context, Uri uri) {
+
+        Cursor cursor = null;
+        final String[] projection = {
+                MediaStore.MediaColumns.DISPLAY_NAME
+        };
+
+        try {
+            cursor = context.getContentResolver().query(uri, projection, null, null,
+                    null);
+            if (cursor != null && cursor.moveToFirst()) {
+                final int index = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME);
+                return cursor.getString(index);
+            }
+        } catch(Exception e) {
+            e.printStackTrace();
+        }finally {
+            if (cursor != null)
+                cursor.close();
+        }
+        return null;
+    }
+
+    private String getDataColumn(Context context, Uri uri, String selection, String[] selectionArgs) {
         Cursor cursor = null;
         final String column = "_data";
-        final String[] projection = {column};
+        final String[] projection = {column};//返回的数据类型
         try {
             cursor = context.getContentResolver().query(uri, projection, selection, selectionArgs, null);
             if (cursor != null && cursor.moveToFirst()) {
@@ -141,7 +196,7 @@ public final class FileUtils {
      * @param uri The Uri to check.
      * @return Whether the Uri authority is ExternalStorageProvider.
      */
-    public static boolean isExternalStorageDocument(Uri uri) {
+    private boolean isExternalStorageDocument(Uri uri) {
         return "com.android.externalstorage.documents".equals(uri.getAuthority());
     }
 
@@ -149,7 +204,7 @@ public final class FileUtils {
      * @param uri The Uri to check.
      * @return Whether the Uri authority is DownloadsProvider.
      */
-    public static boolean isDownloadsDocument(Uri uri) {
+    private boolean isDownloadsDocument(Uri uri) {
         return "com.android.providers.downloads.documents".equals(uri.getAuthority());
     }
 
@@ -157,7 +212,7 @@ public final class FileUtils {
      * @param uri The Uri to check.
      * @return Whether the Uri authority is MediaProvider.
      */
-    public static boolean isMediaDocument(Uri uri) {
+    private boolean isMediaDocument(Uri uri) {
         return "com.android.providers.media.documents".equals(uri.getAuthority());
     }
 
@@ -165,20 +220,24 @@ public final class FileUtils {
      * @param uri The Uri to check.
      * @return Whether the Uri authority is Google Photos.
      */
-    public static boolean isGooglePhotosUri(Uri uri) {
+    private boolean isGooglePhotosUri(Uri uri) {
         return "com.google.android.apps.photos.content".equals(uri.getAuthority());
     }
 
-    public static boolean isSystemAlbums(Uri uri){
+    private boolean isSystemAlbums(Uri uri){
         return "media".equals(uri.getAuthority());
     }
 
 
-    public static boolean isQQBrowserUri(Uri uri) {//判断uri是否来自于QQ浏览器
+    private boolean isQQBrowserUri(Uri uri) {//判断uri是否来自于QQ浏览器
         return "com.tencent.mtt.fileprovider".equals(uri.getAuthority());
     }
 
-    public static boolean isWPSUri(Uri uri) {//判断uri是否来自于QQ浏览器
+    private boolean isWPSUri(Uri uri) {//判断uri是否来自于QQ浏览器
         return "cn.wps.moffice_eng.fileprovider".equals(uri.getAuthority());
+    }
+
+    public String getInformation() {
+        return information;
     }
 }
