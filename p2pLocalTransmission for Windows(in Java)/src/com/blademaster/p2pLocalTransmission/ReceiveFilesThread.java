@@ -1,9 +1,12 @@
 package com.blademaster.p2pLocalTransmission;
 
+import java.io.BufferedWriter;
 import java.io.DataInputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -90,7 +93,7 @@ public class ReceiveFilesThread extends Thread{
     	for(int i=0;i<fileCount;i++) {
     		int byteLength = input.readInt();
     		byte[] bytes = new byte[byteLength];
-    		input.read(bytes);
+    		input.readFully(bytes);
     		String str = new String(bytes, "UTF-8");  
     		filesName.add(str);
     	}
@@ -101,17 +104,36 @@ public class ReceiveFilesThread extends Thread{
         	filesLength.add(input.readInt());
         }
         
+        //读文件最后修改日期
+        ArrayList<Long> fileLastModified = new ArrayList<>(0);
+        for(int i=0;i<fileCount;i++){
+        	fileLastModified.add(input.readLong());//输出文件的长度
+        }
+        
+        //读文件路径（用于回传时复原）
+    	ArrayList<String> filesPath = new ArrayList<>(0);
+        for(int i=0;i<fileCount;i++){
+        	int byteLength = input.readInt();
+    		byte[] bytes = new byte[byteLength];
+    		input.readFully(bytes);
+    		String str = new String(bytes, "UTF-8");  
+    		filesPath.add(str);
+        }
+        
 		//读文件
     	for(int i=0;i<fileCount;i++) {
     		file_length = filesLength.get(i);//第i个文件的大小
 			System.out.println("len = " + file_length);
 			System.out.println("文件名：" + filesName.get(i)+"第"+i+"个");
 			//为文件创建输出流，输出到文件
-			File file = new File(filesName.get(i));//已包含.png
+			File file = new File("p2pLocalTransmission接收区/"+filesName.get(i));//已包含.png
+			if(!file.getParentFile().exists()) {
+				file.getParentFile().mkdirs();//创建父文件夹（们）
+				//file.createNewFile();
+			}
 			FileOutputStream fileOutputStream = new FileOutputStream(file);//从程序输出到文件中
 			
 			currentLocal = 0;
-			int n;
 			while(currentLocal<filesLength.get(i)-1024) {
 				byte[] bytes=new byte[1024];//1M1M的发
 				input.readFully(bytes);//读输入流1M，用readFully读取的大小确实是bytes的大小
@@ -120,12 +142,28 @@ public class ReceiveFilesThread extends Thread{
 			}
 			byte[] bytes=new byte[filesLength.get(i)-currentLocal];//剩余小于等于1024的部分
 			input.readFully(bytes);//读输入流1M
-			fileOutputStream.write(bytes,0,filesLength.get(i)-currentLocal-1);//写文件1M
+			fileOutputStream.write(bytes,0,filesLength.get(i)-currentLocal);//写剩余文件
 			currentLocal = filesLength.get(i);
 			
 			fileOutputStream.close();//关闭文件流，文件写入完成
+			
+			if(fileLastModified.get(i) != 0) {
+				file.setLastModified(fileLastModified.get(i));//修改文件的最后修改时间
+			}
 			System.out.println("ok");
     	}
+    	
+    	//储存路径信息
+    	FileOutputStream fileOutputStream = new FileOutputStream("p2pLocalTransmission路径存档.txt", true);//在文件末尾写入
+    	OutputStreamWriter outputStreamWriter = new OutputStreamWriter(fileOutputStream);
+    	BufferedWriter bufferedWriter =new BufferedWriter(outputStreamWriter);
+    	
+    	for(int i=0;i<fileCount;i++) {
+    		bufferedWriter.write(filesName.get(i)+"\t"+filesPath.get(i));
+    		bufferedWriter.newLine();
+    	}
+    	
+    	bufferedWriter.close();
 	}
 
     /**

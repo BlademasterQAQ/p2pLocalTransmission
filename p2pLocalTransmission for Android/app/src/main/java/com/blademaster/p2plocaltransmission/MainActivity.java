@@ -2,7 +2,6 @@ package com.blademaster.p2plocaltransmission;
 
 import android.Manifest;
 import android.app.Activity;
-import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
@@ -93,39 +92,62 @@ public class MainActivity extends AppCompatActivity {
                     sendMessageThread.setMessage("请求发送文件");
                     sendMessageThread.start();
 
-                    //开启发送文件线程
-                    final SendFilesByInputStream sendFilesByInputStream = new SendFilesByInputStream(host, file_POST, handler_MainActivity);
-                    //解析文件输入流
-                    ArrayList<InputStream> fileInputStream = new ArrayList<>(0);
-                    try {
-                        for(int i=0;i<fileUri.size();i++){
-                            fileInputStream.add(getContentResolver().openInputStream(fileUri.get(i)));//由Uri获取文件流
-                        }
-                    } catch (FileNotFoundException e) {
-                        e.printStackTrace();
-                    }
-                    sendFilesByInputStream.setFilesInputStream(fileInputStream);//设置文件输入流
-                    //解析文件名
-                    ArrayList<String> filesName = new ArrayList<>(0);
-
-                    for(int i=0;i<fileUri.size();i++){
-                        filesName.add(Uri2File.Uri2Filename(MainActivity.this,fileUri.get(i)));
-                    }
-                    sendFilesByInputStream.setFilesName(filesName);//设置文件名
-                    // TODO: 2020/1/20 提供可修改文件名的功能（根据editText获取最终发送的文件名）
-                    //String path=MainActivity.this.getApplicationContext().getFilesDir().toString()+"/basedata.txt";
-                    //sendFileThread.setFilePath(filePath);
-                    sendFilesByInputStream.start();
-
-                    new Thread(new Runnable() {//当文件正在发送时
-                        @Override
-                        public void run() {
-                            while (sendFilesByInputStream.getCurrentLocal() == 0 || sendFilesByInputStream.getFiles_length() > sendFilesByInputStream.getCurrentLocal()) {
-                                textView_process.setText("正在发送：" + sendFilesByInputStream.getCurrentLocal() + "/" + sendFilesByInputStream.getFiles_length());
+                    if(!switch_time.isChecked()) {
+                        //开启发送文件线程
+                        final SendFilesByInputStream sendFilesByInputStream = new SendFilesByInputStream(host, file_POST, handler_MainActivity);
+                        //解析文件输入流
+                        ArrayList<InputStream> fileInputStream = new ArrayList<>(0);
+                        try {
+                            for (int i = 0; i < fileUri.size(); i++) {
+                                fileInputStream.add(getContentResolver().openInputStream(fileUri.get(i)));//由Uri获取文件流
                             }
-                            textView_process.setText("");
+                        } catch (FileNotFoundException e) {
+                            e.printStackTrace();
                         }
-                    }).start();
+                        sendFilesByInputStream.setFilesInputStream(fileInputStream);//设置文件输入流
+                        //解析文件名
+                        ArrayList<String> filesName = new ArrayList<>(0);
+
+                        for (int i = 0; i < fileUri.size(); i++) {
+                            filesName.add(Uri2File.Uri2Filename(MainActivity.this, fileUri.get(i)));
+                        }
+                        sendFilesByInputStream.setFilesName(filesName);//设置文件名
+                        // TODO: 2020/1/20 提供可修改文件名的功能（根据editText获取最终发送的文件名）
+                        //String path=MainActivity.this.getApplicationContext().getFilesDir().toString()+"/basedata.txt";
+                        //sendFileThread.setFilePath(filePath);
+                        sendFilesByInputStream.start();
+
+                        new Thread(new Runnable() {//当文件正在发送时
+                            @Override
+                            public void run() {
+                                while (sendFilesByInputStream.getCurrentLocal() == 0 || sendFilesByInputStream.getFile_length() > sendFilesByInputStream.getCurrentLocal()) {
+                                    textView_process.setText("正在发送：" + sendFilesByInputStream.getCurrentLocal() + "/" + sendFilesByInputStream.getFile_length());
+                                }
+                                textView_process.setText("");
+                            }
+                        }).start();
+                    }else{
+                        //同步修改时间进行发送
+                        final SendFilesThread sendFilesThread = new SendFilesThread(host, file_POST, handler_MainActivity);
+                        //解析文件名
+                        ArrayList<String> filesName = new ArrayList<>(0);
+                        Uri2RealPath uri2RealPath = new Uri2RealPath();
+                        for (int i = 0; i < fileUri.size(); i++) {
+                            filesName.add(uri2RealPath.getFilePathByUri(MainActivity.this,fileUri.get(i)));//由Uri获取文件流
+                        }
+                        sendFilesThread.setFilesPath(filesName);
+                        sendFilesThread.start();
+
+                        new Thread(new Runnable() {//当文件正在发送时
+                            @Override
+                            public void run() {
+                                while (sendFilesThread.getCurrentLocal() == 0 || sendFilesThread.getFile_length() > sendFilesThread.getCurrentLocal()) {
+                                    textView_process.setText("正在发送：" + sendFilesThread.getCurrentLocal() + "/" + sendFilesThread.getFile_length());
+                                }
+                                textView_process.setText("");
+                            }
+                        }).start();
+                    }
                 }
             }
         });
@@ -142,14 +164,14 @@ public class MainActivity extends AppCompatActivity {
                     if(message.equals("请求发送文件")) {//接收到对方"请求发送文件"时，准备接收文件
                         Toast.makeText(MainActivity.this,"开始接收文件",Toast.LENGTH_LONG).show();
                         //等待接收
-                        final ReceiveFileThread receiveFileThread=new ReceiveFileThread(file_POST,handler_MainActivity,MainActivity.this);
-                        receiveFileThread.start();
+                        final ReceiveFilesThread receiveFilesThread=new ReceiveFilesThread(file_POST,handler_MainActivity,MainActivity.this);
+                        receiveFilesThread.start();
 
                         new Thread(new Runnable() {//当文件正在接受时
                             @Override
                             public void run() {
-                                while (receiveFileThread.getCurrentLocal()==0||receiveFileThread.getFile_length()>receiveFileThread.getCurrentLocal()){
-                                    textView_process.setText("正在接收："+receiveFileThread.getCurrentLocal()+"/"+receiveFileThread.getFile_length());
+                                while (receiveFilesThread.getCurrentLocal()==0||receiveFilesThread.getFile_length()>receiveFilesThread.getCurrentLocal()){
+                                    textView_process.setText("正在接收："+receiveFilesThread.getCurrentLocal()+"/"+receiveFilesThread.getFile_length());
                                 }
                                 textView_process.setText("");
                             }

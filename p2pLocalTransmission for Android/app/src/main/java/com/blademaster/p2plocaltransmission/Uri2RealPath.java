@@ -151,7 +151,7 @@ public class Uri2RealPath {
         return null;
     }
 
-    public static String getDownloadsDocumentPath(Context context, Uri uri) {
+    private String getDownloadsDocumentPath(Context context, Uri uri) {
 
         Cursor cursor = null;
         final String[] projection = {

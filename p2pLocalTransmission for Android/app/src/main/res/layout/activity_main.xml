@@ -214,8 +214,8 @@
 
     <Switch
         android:id="@+id/switch_time"
-        android:layout_width="157dp"
-        android:layout_height="12dp"
+        android:layout_width="188dp"
+        android:layout_height="29dp"
         android:text="同步文件修改时间"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"

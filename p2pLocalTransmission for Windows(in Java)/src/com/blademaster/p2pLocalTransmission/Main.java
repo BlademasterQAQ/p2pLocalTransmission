@@ -80,6 +80,7 @@ public class Main extends JFrame{
                     Object o = t.getTransferData(DataFlavor.javaFileListFlavor);
                     
                     String filepath = o.toString();
+                    System.err.println(filepath);
                     if (filepath.startsWith("[")) {
                         filepath = filepath.substring(1);
                     }
@@ -87,7 +88,7 @@ public class Main extends JFrame{
                         filepath = filepath.substring(0, filepath.length() - 1);
                     }
                     textField_send.setText(filepath);
-                   
+                    
                     return true;
                 }
                 catch (Exception e) {
@@ -129,15 +130,17 @@ public class Main extends JFrame{
 					sendMessageThread.start();
 					
 					//开启发送文件线程
-					SendFileThread sendFileThread = new SendFileThread(host, file_POST,synchronizeSendFile);
-					sendFileThread.setFilePath(textField_send.getText());
-					sendFileThread.start();
+					SendFilesThread sendFilesThread = new SendFilesThread(host, file_POST,synchronizeSendFile);
+					ArrayList<String> filesPath = new ArrayList<>();
+					filesPath.add(textField_send.getText());
+					sendFilesThread.setFilePath(filesPath);
+					sendFilesThread.start();
 					
 					new Thread(new Runnable() {//当文件正在发送时
 	                    @Override
 	                    public void run() {
-	                        while (sendFileThread.getCurrentLocal()==0||sendFileThread.getFile_length()>sendFileThread.getCurrentLocal()){
-	                        	textField_information.setText("正在发送："+sendFileThread.getCurrentLocal()+"/"+sendFileThread.getFile_length());
+	                        while (sendFilesThread.getCurrentLocal()==0||sendFilesThread.getFile_length()>sendFilesThread.getCurrentLocal()){
+	                        	textField_information.setText("正在发送："+sendFilesThread.getCurrentLocal()+"/"+sendFilesThread.getFile_length());
 	                        }
 	                        textField_information.setText("");
 	                    }
