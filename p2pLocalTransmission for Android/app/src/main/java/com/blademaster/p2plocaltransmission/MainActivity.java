@@ -19,7 +19,11 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.InputStream;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 
 public class MainActivity extends AppCompatActivity {
@@ -87,6 +91,7 @@ public class MainActivity extends AppCompatActivity {
         send_button.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                host = "192.168.0.103";//临时
                 if (fileUri != null) {
                     SendMessageThread sendMessageThread = new SendMessageThread(host, message_POST);
                     sendMessageThread.setMessage("请求发送文件");
@@ -221,6 +226,13 @@ public class MainActivity extends AppCompatActivity {
                             textView_MobileIP.setText(mobileWiFiInfo.getMobileIP());
                             host=mobileWiFiInfo.getWiFiIP();//获取所连客户端的ip
                             receiveMessageThread.setHost(host);//更新host
+//                            try {
+//                                InetAddress inetAddress = InetAddress.getByName("192.168.0.101");
+//                                System.err.println(inetAddress.isReachable(1000));
+//                            } catch (IOException e) {
+//                                e.printStackTrace();
+//                            }
+                            //System.err.println(mobileWiFiInfo.getConnectedHotspotIP().get(2));
                         }
                         else {
                             textView_WiFiState.setText("WiFi未连接");
@@ -272,7 +284,6 @@ public class MainActivity extends AppCompatActivity {
             fileUri.add((Uri)intent.getParcelableExtra(Intent.EXTRA_STREAM));//获取单个Uri
             textView_path.setText(fileUri.get(0).getPath());
             editText.setText(Uri2File.Uri2Filename(MainActivity.this,fileUri.get(0)));
-
         }
         else if (Intent.ACTION_SEND_MULTIPLE.equals(intent_action) && intent_type != null) {//intent为发送多个文件时
             fileUri = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);//返回文件Uri组成的ArrayList
