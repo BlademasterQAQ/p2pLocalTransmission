@@ -91,7 +91,6 @@ public class MainActivity extends AppCompatActivity {
         send_button.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                host = "192.168.0.103";//临时
                 if (fileUri != null) {
                     SendMessageThread sendMessageThread = new SendMessageThread(host, message_POST);
                     sendMessageThread.setMessage("请求发送文件");
